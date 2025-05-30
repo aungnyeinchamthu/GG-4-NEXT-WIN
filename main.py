@@ -32,10 +32,11 @@ def main():
     print(f"Starting webhook on {webhook_url}")
 
     app.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        webhook_url=webhook_url
-    )
+    listen="0.0.0.0",
+    port=port,
+    webhook_url="https://gg-4-next-win-production.up.railway.app/webhook"
+)
+
 
 if __name__ == "__main__":
     main()
