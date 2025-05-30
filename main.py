@@ -1,38 +1,25 @@
-import os
 import asyncio
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from telegram import Update
-import logging
-
-# Logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+import os
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Welcome to GG 4 NEXT WIN Bot! Type /help to see available commands.")
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("💡 Available commands:\n/start - Welcome message\n/help - This help menu")
+async def start(update, context):
+    await update.message.reply_text("👋 Hello! The bot is running!")
 
 async def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
 
-    await app.run_webhook(
+    await app.initialize()
+    await app.start()
+    await app.updater.start_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 8000)),
-        webhook_url=f"https://gg-4-next-win-production.up.railway.app/webhook/{BOT_TOKEN}"
+        url_path=f"{BOT_TOKEN}",
+        webhook_url=f"https://gg-4-next-win-production.up.railway.app/{BOT_TOKEN}"
     )
+    await app.updater.idle()
 
-# Detect if already inside an event loop
-try:
-    asyncio.get_running_loop().create_task(main())
-except RuntimeError:
+if __name__ == "__main__":
     asyncio.run(main())
