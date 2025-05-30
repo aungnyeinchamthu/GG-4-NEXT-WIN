@@ -3,7 +3,6 @@ from telegram.ext import ApplicationBuilder, CommandHandler
 from telegram import Update
 from telegram.ext import ContextTypes
 
-# Load bot token and admin chat ID from environment
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
 
@@ -26,17 +25,15 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
 
-    # Webhook configuration for Railway
+    # Webhook setup for Railway
     port = int(os.environ.get("PORT", 8000))
-    webhook_path = f"/webhook/{BOT_TOKEN}"
-    webhook_url = f"https://gg-4-next-win-production.up.railway.app{webhook_path}"
+    webhook_url = f"https://gg-4-next-win-production.up.railway.app/webhook"
 
     print(f"Starting webhook on {webhook_url}")
 
     app.run_webhook(
         listen="0.0.0.0",
         port=port,
-        webhook_path=webhook_path,
         webhook_url=webhook_url
     )
 
