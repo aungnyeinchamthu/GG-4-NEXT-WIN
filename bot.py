@@ -359,12 +359,7 @@ class GG4NEXTWINBot:
     self.updater.start_polling()
     self.logger.info("GG4NEXTWIN Bot started. Press Ctrl-C to exit.")
     self.updater.idle()
-        
-        # Start the bot
-        self.updater.start_polling()
-        self.logger.info("GG4NEXTWIN Bot started. Press Ctrl-C to exit.")
-        self.updater.idle()
-
+    
 if __name__ == '__main__':
     # Load environment variables
     token = os.getenv('TELEGRAM_TOKEN')
