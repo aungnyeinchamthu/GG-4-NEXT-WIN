@@ -1,1 +1,2 @@
-python-telegram-bot==20.6
+python-telegram-bot==20.0a0
+python-dotenv==0.20.0
