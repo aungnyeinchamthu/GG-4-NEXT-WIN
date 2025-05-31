@@ -38,7 +38,7 @@ class GG4NEXTWINBot:
             ]
         )
 
-    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def start(self, update: Update, context):
         user_id = update.effective_user.id
         username = update.effective_user.username
         # Referral logic here...
