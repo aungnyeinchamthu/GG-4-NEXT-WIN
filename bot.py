@@ -346,14 +346,19 @@ class GG4NEXTWINBot:
         return [[InlineKeyboardButton("Cancel", callback_data="cancel")]]
 
     def run(self):
-        """Start the bot"""
-        self.updater = Updater(self.token)
-        dp = self.updater.dispatcher
-        
-        # Register handlers
-        dp.add_handler(CommandHandler("start", self.start))
-        dp.add_handler(CallbackQueryHandler(self.button_callback))
-        dp.add_handler(MessageHandler(~Filters.command, self.handle_message))
+    """Start the bot"""
+    self.updater = Updater(self.token, update_queue=None)
+    dp = self.updater.dispatcher
+    
+    # Register handlers
+    dp.add_handler(CommandHandler("start", self.start))
+    dp.add_handler(CallbackQueryHandler(self.button_callback))
+    dp.add_handler(MessageHandler(~Filters.command, self.handle_message))
+    
+    # Start the bot
+    self.updater.start_polling()
+    self.logger.info("GG4NEXTWIN Bot started. Press Ctrl-C to exit.")
+    self.updater.idle()
         
         # Start the bot
         self.updater.start_polling()
