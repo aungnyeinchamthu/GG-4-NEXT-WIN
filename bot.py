@@ -3,14 +3,12 @@ import os
 import asyncio
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from telegram import (
-    Update, InlineKeyboardMarkup, InlineKeyboardButton
-)
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
-    MessageHandler, filters, ContextTypes
+    MessageHandler, filters
 )
-from typing import Dict, List
+from typing import List
 
 class GG4NEXTWINBot:
     def __init__(self, token: str, admin_group_id: str):
@@ -82,28 +80,22 @@ class GG4NEXTWINBot:
             return await loop.run_in_executor(self.executor, self.cursor.execute, query)
         return await loop.run_in_executor(self.executor, self.cursor.execute, query, params)
 
-    async def execute_script(self, script: str):
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self.executor, self.cursor.executescript, script)
-
     async def commit(self):
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(self.executor, self.conn.commit)
 
-    # ---------- Handlers ----------
+    # ----------- Bot Handlers -----------
 
     async def start(self, update: Update, context):
         user_id = str(update.effective_user.id)
         username = update.effective_user.username
 
-        # Register user
         await self.execute_query(
             "INSERT OR IGNORE INTO users (telegram_id, username) VALUES (?, ?)",
             (user_id, username)
         )
         await self.commit()
 
-        # Send main menu
         await context.bot.send_message(
             chat_id=user_id,
             text="Welcome to GG4NEXTWIN!\n\nAvailable options:",
@@ -132,7 +124,7 @@ class GG4NEXTWINBot:
                 text="Please enter your 1xBet ID:"
             )
             context.user_data['conversation_state'] = 'awaiting_1xbet_id'
-        # Add more button logic here (withdraw, cashback, etc.)
+        # More button logic can be added here for other menu options
         await query.answer()
 
     async def text_handler(self, update: Update, context):
@@ -164,17 +156,15 @@ class GG4NEXTWINBot:
             file = await context.bot.get_file(file_id)
             payslip_url = file.file_path
 
-            # Save deposit to database
             await self.execute_query(
                 "INSERT INTO deposits (user_telegram_id, amount, payment_method, payment_slip_url, status) VALUES (?, ?, ?, ?, 'pending')",
                 (user_id, context.user_data.get('amount'), "Bank", payslip_url)
             )
             await self.commit()
             await update.message.reply_text("Deposit request received. Admin will review soon.")
-            # Reset conversation
             context.user_data.clear()
 
-    # ---------- Main Loop ----------
+    # ----------- Main Loop -----------
 
     async def main(self):
         application = Application.builder().token(self.token).build()
