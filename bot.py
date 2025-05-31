@@ -356,7 +356,6 @@ class GG4NEXTWINBot:
     dp.add_handler(MessageHandler(~Filters.command, self.handle_message))
     
     # Start the bot
-
     self.updater.start_polling()
     self.logger.info("GG4NEXTWIN Bot started. Press Ctrl-C to exit.")
     self.updater.idle()
