@@ -1,7 +1,6 @@
 import logging
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler
-from telegram import Update
-from telegram.ext.filters import Filters
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 import sqlite3
 from datetime import datetime
 import os
@@ -133,51 +132,6 @@ class GG4NEXTWINBot:
             self.conn.commit()
         except sqlite3.Error as e:
             self.logger.error(f"Error registering user: {e}")
-            raise
-
-    def process_referral(self, referral_id: str, referrer_id: str):
-        """Process new referral"""
-        try:
-            # Check if referrer exists
-            self.cursor.execute("SELECT telegram_id FROM users WHERE telegram_id = ?", (referrer_id,))
-            if self.cursor.fetchone():
-                # Update referral information
-                self.cursor.execute("""
-                    UPDATE users 
-                    SET referrer_id = ? 
-                    WHERE telegram_id = ?
-                """, (referrer_id, referral_id))
-                self.conn.commit()
-                
-                # Create referral record
-                self.cursor.execute("""
-                    INSERT INTO referrals (referrer_id, referral_id)
-                    VALUES (?, ?)
-                """, (referrer_id, referral_id))
-                self.conn.commit()
-                
-                # Calculate and award referral bonus
-                self.award_referral_bonus(referrer_id)
-            else:
-                self.logger.warning(f"Invalid referrer ID: {referrer_id}")
-        except sqlite3.Error as e:
-            self.logger.error(f"Error processing referral: {e}")
-            raise
-
-    def award_referral_bonus(self, referrer_id: str):
-        """Award cashback bonus to referrer"""
-        try:
-            # Award 0.25% of deposit amount as cashback
-            bonus_percentage = 0.0025  # 0.25%
-            
-            self.cursor.execute("""
-                UPDATE users 
-                SET cashback_points = cashback_points + ? 
-                WHERE telegram_id = ?
-            """, (bonus_percentage, referrer_id))
-            self.conn.commit()
-        except sqlite3.Error as e:
-            self.logger.error(f"Error awarding referral bonus: {e}")
             raise
 
     def get_main_menu_keyboard(self) -> List[List[InlineKeyboardButton]]:
@@ -399,7 +353,7 @@ class GG4NEXTWINBot:
         # Register handlers
         dp.add_handler(CommandHandler("start", self.start))
         dp.add_handler(CallbackQueryHandler(self.button_callback))
-        dp.add_handler(MessageHandler(Filters.text & ~Filters.command, self.handle_message))
+        dp.add_handler(MessageHandler(~Filters.command, self.handle_message))
         
         # Start the bot
         self.updater.start_polling()
