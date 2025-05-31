@@ -1,10 +1,11 @@
 import logging
-from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 import sqlite3
 from datetime import datetime
 import os
 from typing import Dict, List, Optional
+import asyncio
 
 class GG4NEXTWINBot:
     def __init__(self, token: str, admin_group_id: str):
@@ -14,13 +15,13 @@ class GG4NEXTWINBot:
         self.setup_database()
         self.setup_logging()
         
-    def setup_database(self):
+    async def setup_database(self):
         """Initialize database connection and create necessary tables"""
         self.conn = sqlite3.connect('gg4nextwin.db')
         self.cursor = self.conn.cursor()
-        self.create_tables()
+        await self.create_tables()
         
-    def create_tables(self):
+    async def create_tables(self):
         """Create required database tables"""
         queries = [
             """
@@ -93,7 +94,7 @@ class GG4NEXTWINBot:
             ]
         )
 
-    def start(self, update, context):
+    async def start(self, update: Update, context):
         """Handle /start command with referral system"""
         user_id = update.effective_user.id
         username = update.effective_user.username
@@ -102,14 +103,14 @@ class GG4NEXTWINBot:
         if context.args and len(context.args) > 0:
             referrer_id = context.args[0]
             self.logger.info(f"Referral detected: {referrer_id} referred {user_id}")
-            self.process_referral(user_id, referrer_id)
+            await self.process_referral(user_id, referrer_id)
         
         try:
             # Register user if new
-            self.register_user(user_id, username)
+            await self.register_user(user_id, username)
             
             # Send welcome message with menu
-            context.bot.send_message(
+            await context.bot.send_message(
                 chat_id=user_id,
                 text="Welcome to GG4NEXTWIN!\n\nAvailable options:",
                 parse_mode='Markdown',
@@ -117,12 +118,12 @@ class GG4NEXTWINBot:
             )
         except Exception as e:
             self.logger.error(f"Error handling start command: {e}")
-            context.bot.send_message(
+            await context.bot.send_message(
                 chat_id=user_id,
                 text="An error occurred. Please try again later."
             )
 
-    def register_user(self, user_id: str, username: str):
+    async def register_user(self, user_id: str, username: str):
         """Register or update user information"""
         try:
             self.cursor.execute("""
@@ -154,38 +155,38 @@ class GG4NEXTWINBot:
             [InlineKeyboardButton("Bank C", callback_data="bank_c")]
         ]
 
-    def button_callback(self, update, context):
+    async def button_callback(self, update: Update, context):
         """Handle button callbacks"""
         query = update.callback_query
         user_id = query.from_user.id
         
         try:
             if query.data == "deposit":
-                self.start_deposit_flow(user_id, context)
+                await self.start_deposit_flow(user_id, context)
             elif query.data == "withdraw":
-                self.start_withdraw_flow(user_id, context)
+                await self.start_withdraw_flow(user_id, context)
             elif query.data == "new_account":
-                self.handle_new_account(user_id, context)
+                await self.handle_new_account(user_id, context)
             elif query.data == "cashback":
-                self.show_cashback(user_id, context)
+                await self.show_cashback(user_id, context)
             elif query.data == "referral":
-                self.generate_referral_link(user_id, context)
+                await self.generate_referral_link(user_id, context)
             elif query.data == "help":
-                self.show_help(user_id, context)
+                await self.show_help(user_id, context)
             elif query.data == "rank":
-                self.show_rank(user_id, context)
+                await self.show_rank(user_id, context)
             elif query.data.startswith("bank_"):
-                self.process_bank_selection(user_id, query.data, context)
+                await self.process_bank_selection(user_id, query.data, context)
             
-            query.answer()
+            await query.answer()
         except Exception as e:
             self.logger.error(f"Error handling button callback: {e}")
-            query.answer(text="An error occurred. Please try again.")
+            await query.answer(text="An error occurred. Please try again.")
 
-    def start_deposit_flow(self, user_id: int, context):
+    async def start_deposit_flow(self, user_id: int, context):
         """Start deposit flow"""
         try:
-            context.bot.send_message(
+            await context.bot.send_message(
                 chat_id=user_id,
                 text="Please enter your 1xBet ID:",
                 reply_markup=self.get_cancel_keyboard()
@@ -194,7 +195,7 @@ class GG4NEXTWINBot:
         except Exception as e:
             self.logger.error(f"Error starting deposit flow: {e}")
 
-    def process_1xbet_id(self, update, context):
+    async def process_1xbet_id(self, update: Update, context):
         """Process 1xBet ID input"""
         user_id = update.effective_user.id
         one_x_bet_id = update.message.text
@@ -202,7 +203,7 @@ class GG4NEXTWINBot:
         try:
             # Validate 1xBet ID format (9-13 digits)
             if not (one_x_bet_id.isdigit() and 9 <= len(one_x_bet_id) <= 13):
-                context.bot.send_message(
+                await context.bot.send_message(
                     chat_id=user_id,
                     text="Invalid 1xBet ID format. Please enter 9-13 digits.",
                     reply_markup=self.get_cancel_keyboard()
@@ -212,25 +213,25 @@ class GG4NEXTWINBot:
             context.user_data['one_x_bet_id'] = one_x_bet_id
             context.user_data['conversation_state'] = 'deposit_amount'
             
-            context.bot.send_message(
+            await context.bot.send_message(
                 chat_id=user_id,
                 text="Enter deposit amount:",
                 reply_markup=self.get_cancel_keyboard()
             )
         except Exception as e:
             self.logger.error(f"Error processing 1xBet ID: {e}")
-            context.bot.send_message(
+            await context.bot.send_message(
                 chat_id=user_id,
                 text="Error processing 1xBet ID. Please try again."
             )
 
-    def process_deposit_amount(self, update, context):
+    async def process_deposit_amount(self, update: Update, context):
         """Process deposit amount"""
         user_id = update.effective_user.id
         try:
             amount = float(update.message.text)
             if amount <= 0:
-                context.bot.send_message(
+                await context.bot.send_message(
                     chat_id=user_id,
                     text="Amount must be positive.",
                     reply_markup=self.get_cancel_keyboard()
@@ -240,19 +241,19 @@ class GG4NEXTWINBot:
             context.user_data['amount'] = amount
             context.user_data['conversation_state'] = 'deposit_bank'
             
-            context.bot.send_message(
+            await context.bot.send_message(
                 chat_id=user_id,
                 text="Select your bank:",
                 reply_markup=InlineKeyboardMarkup(self.get_bank_options_keyboard())
             )
         except ValueError:
-            context.bot.send_message(
+            await context.bot.send_message(
                 chat_id=user_id,
                 text="Invalid amount. Please enter a valid number.",
                 reply_markup=self.get_cancel_keyboard()
             )
 
-    def process_bank_selection(self, user_id: int, bank_data: str, context):
+    async def process_bank_selection(self, user_id: int, bank_data: str, context):
         """Process bank selection"""
         try:
             bank = bank_data.replace("bank_", "")
@@ -260,26 +261,26 @@ class GG4NEXTWINBot:
             context.user_data['bank'] = bank
             context.user_data['conversation_state'] = 'deposit_payslip'
             
-            context.bot.send_message(
+            await context.bot.send_message(
                 chat_id=user_id,
                 text="Please upload your payment slip:",
                 reply_markup=self.get_cancel_keyboard()
             )
         except Exception as e:
             self.logger.error(f"Error processing bank selection: {e}")
-            context.bot.send_message(
+            await context.bot.send_message(
                 chat_id=user_id,
                 text="Error processing bank selection. Please try again."
             )
 
-    def process_payslip(self, update, context):
+    async def process_payslip(self, update: Update, context):
         """Process payment slip"""
         user_id = update.effective_user.id
         file_id = update.message.photo[-1].file_id
         
         try:
             # Download and validate payment slip
-            file_path = context.bot.get_file(file_id).file_path
+            file_path = await context.bot.get_file(file_id).file_path
             
             # Store deposit information
             deposit_data = {
@@ -290,24 +291,24 @@ class GG4NEXTWINBot:
                 'one_x_bet_id': context.user_data['one_x_bet_id']
             }
             
-            self.store_deposit(deposit_data)
-            self.notify_admin_group("New deposit request received")
+            await self.store_deposit(deposit_data)
+            await self.notify_admin_group("New deposit request received")
             
             # Reset conversation state
             context.user_data.clear()
             
-            context.bot.send_message(
+            await context.bot.send_message(
                 chat_id=user_id,
                 text="Deposit request received successfully. Admin will review it shortly."
             )
         except Exception as e:
             self.logger.error(f"Error processing payslip: {e}")
-            context.bot.send_message(
+            await context.bot.send_message(
                 chat_id=user_id,
                 text="Error processing payment slip. Please try again."
             )
 
-    def store_deposit(self, deposit_data: Dict):
+    async def store_deposit(self, deposit_data: Dict):
         """Store deposit information in database"""
         try:
             self.cursor.execute("""
@@ -325,7 +326,7 @@ class GG4NEXTWINBot:
             self.logger.error(f"Error storing deposit: {e}")
             raise
 
-    def notify_admin_group(self, message: str):
+    async def notify_admin_group(self, message: str):
         """Notify admin group about new deposit"""
         try:
             keyboard = [
@@ -333,7 +334,7 @@ class GG4NEXTWINBot:
                  InlineKeyboardButton("Reject", callback_data="reject")]
             ]
             
-            self.updater.bot.send_message(
+            await self.application.bot.send_message(
                 chat_id=self.admin_group_id,
                 text=message,
                 reply_markup=InlineKeyboardMarkup(keyboard)
@@ -345,21 +346,30 @@ class GG4NEXTWINBot:
         """Return cancel keyboard"""
         return [[InlineKeyboardButton("Cancel", callback_data="cancel")]]
 
-    def run(self):
-    """Start the bot"""
-    self.updater = Updater(self.token, update_queue=None)
-    dp = self.updater.dispatcher
-    
-    # Register handlers
-    dp.add_handler(CommandHandler("start", self.start))
-    dp.add_handler(CallbackQueryHandler(self.button_callback))
-    dp.add_handler(MessageHandler(~Filters.command, self.handle_message))
-    
-    # Start the bot
-    self.updater.start_polling()
-    self.logger.info("GG4NEXTWIN Bot started. Press Ctrl-C to exit.")
-    self.updater.idle()
-    
+    async def main(self):
+        """Main entry point"""
+        self.application = (
+            Application.builder()
+            .token(self.token)
+            .read_timeout(7)
+            .get_updates_read_timeout(42)
+            .build()
+        )
+
+        # Register handlers
+        self.application.add_handler(CommandHandler("start", self.start))
+        self.application.add_handler(CallbackQueryHandler(self.button_callback))
+        self.application.add_handler(MessageHandler(~filters.COMMAND, self.process_1xbet_id))
+
+        # Start the bot
+        await self.application.initialize()
+        await self.application.start()
+        self.logger.info("GG4NEXTWIN Bot started. Press Ctrl-C to exit.")
+        
+        # Run until Ctrl-C is pressed
+        await self.application.run_polling()
+        await self.application.shutdown()
+
 if __name__ == '__main__':
     # Load environment variables
     token = os.getenv('TELEGRAM_TOKEN')
@@ -370,4 +380,4 @@ if __name__ == '__main__':
     
     # Create and run bot
     bot = GG4NEXTWINBot(token, admin_group_id)
-    bot.run()
+    asyncio.run(bot.main())
