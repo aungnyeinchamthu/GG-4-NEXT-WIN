@@ -1,90 +1,34 @@
 import logging
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import sqlite3
 from datetime import datetime
 import os
-from typing import Dict, List, Optional
-import asyncio
+from typing import Dict, List
 
 class GG4NEXTWINBot:
     def __init__(self, token: str, admin_group_id: str):
         self.token = token
         self.admin_group_id = admin_group_id
         self.logger = logging.getLogger(__name__)
-        self.setup_database()
         self.setup_logging()
-        
-    async def setup_database(self):
+        self.setup_database()
+
+    def setup_database(self):
         """Initialize database connection and create necessary tables"""
-        self.conn = sqlite3.connect('gg4nextwin.db')
+        self.conn = sqlite3.connect('gg4nextwin.db', check_same_thread=False)
         self.cursor = self.conn.cursor()
-        await self.create_tables()
+        self.create_tables()
         
-    async def create_tables(self):
-        """Create required database tables"""
+    def create_tables(self):
         queries = [
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                telegram_id TEXT PRIMARY KEY,
-                username TEXT,
-                one_x_bet_id TEXT,
-                cashback_points REAL DEFAULT 0,
-                rank_level INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                referrer_id TEXT,
-                FOREIGN KEY (referrer_id) REFERENCES users (telegram_id)
-            )
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS deposits (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_telegram_id TEXT,
-                amount REAL,
-                payment_method TEXT,
-                payment_slip_url TEXT,
-                status TEXT CHECK(status IN ('pending', 'approved', 'rejected', 'processed')),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                processed_at TIMESTAMP,
-                FOREIGN KEY (user_telegram_id) REFERENCES users (telegram_id)
-            )
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS withdrawals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_telegram_id TEXT,
-                amount REAL,
-                withdrawal_details TEXT,
-                status TEXT CHECK(status IN ('pending', 'approved', 'rejected', 'processed')),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                processed_at TIMESTAMP,
-                FOREIGN KEY (user_telegram_id) REFERENCES users (telegram_id)
-            )
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS referrals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                referrer_id TEXT,
-                referral_id TEXT,
-                earned_cashback REAL DEFAULT 0,
-                registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (referrer_id) REFERENCES users (telegram_id),
-                FOREIGN KEY (referral_id) REFERENCES users (telegram_id)
-            )
-            """
+            # ... your table creation queries here ...
         ]
-        
         for query in queries:
-            try:
-                self.cursor.executescript(query)
-                self.conn.commit()
-            except sqlite3.Error as e:
-                self.logger.error(f"Database error creating tables: {e}")
-                raise
+            self.cursor.executescript(query)
+        self.conn.commit()
 
     def setup_logging(self):
-        """Configure logging for the bot"""
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -94,49 +38,24 @@ class GG4NEXTWINBot:
             ]
         )
 
-    async def start(self, update: Update, context):
-        """Handle /start command with referral system"""
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         username = update.effective_user.username
-        
-        # Check for referral link
-        if context.args and len(context.args) > 0:
-            referrer_id = context.args[0]
-            self.logger.info(f"Referral detected: {referrer_id} referred {user_id}")
-            await self.process_referral(user_id, referrer_id)
-        
-        try:
-            # Register user if new
-            await self.register_user(user_id, username)
-            
-            # Send welcome message with menu
-            await context.bot.send_message(
-                chat_id=user_id,
-                text="Welcome to GG4NEXTWIN!\n\nAvailable options:",
-                parse_mode='Markdown',
-                reply_markup=self.get_main_menu_keyboard()
-            )
-        except Exception as e:
-            self.logger.error(f"Error handling start command: {e}")
-            await context.bot.send_message(
-                chat_id=user_id,
-                text="An error occurred. Please try again later."
-            )
+        # Referral logic here...
+        self.register_user(user_id, username)
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="Welcome to GG4NEXTWIN!\n\nAvailable options:",
+            reply_markup=InlineKeyboardMarkup(self.get_main_menu_keyboard())
+        )
 
-    async def register_user(self, user_id: str, username: str):
-        """Register or update user information"""
-        try:
-            self.cursor.execute("""
-                INSERT OR REPLACE INTO users (telegram_id, username)
-                VALUES (?, ?)
-            """, (str(user_id), username))
-            self.conn.commit()
-        except sqlite3.Error as e:
-            self.logger.error(f"Error registering user: {e}")
-            raise
+    def register_user(self, user_id, username):
+        self.cursor.execute("""
+            INSERT OR REPLACE INTO users (telegram_id, username) VALUES (?, ?)
+        """, (str(user_id), username))
+        self.conn.commit()
 
     def get_main_menu_keyboard(self) -> List[List[InlineKeyboardButton]]:
-        """Return main menu keyboard layout"""
         return [
             [InlineKeyboardButton("Deposit", callback_data="deposit")],
             [InlineKeyboardButton("Withdraw", callback_data="withdraw")],
@@ -147,237 +66,24 @@ class GG4NEXTWINBot:
             [InlineKeyboardButton("Check Rank", callback_data="rank")]
         ]
 
-    def get_bank_options_keyboard(self) -> List[List[InlineKeyboardButton]]:
-        """Return bank options keyboard"""
-        return [
-            [InlineKeyboardButton("Bank A", callback_data="bank_a")],
-            [InlineKeyboardButton("Bank B", callback_data="bank_b")],
-            [InlineKeyboardButton("Bank C", callback_data="bank_c")]
-        ]
-
-    async def button_callback(self, update: Update, context):
-        """Handle button callbacks"""
-        query = update.callback_query
-        user_id = query.from_user.id
-        
-        try:
-            if query.data == "deposit":
-                await self.start_deposit_flow(user_id, context)
-            elif query.data == "withdraw":
-                await self.start_withdraw_flow(user_id, context)
-            elif query.data == "new_account":
-                await self.handle_new_account(user_id, context)
-            elif query.data == "cashback":
-                await self.show_cashback(user_id, context)
-            elif query.data == "referral":
-                await self.generate_referral_link(user_id, context)
-            elif query.data == "help":
-                await self.show_help(user_id, context)
-            elif query.data == "rank":
-                await self.show_rank(user_id, context)
-            elif query.data.startswith("bank_"):
-                await self.process_bank_selection(user_id, query.data, context)
-            
-            await query.answer()
-        except Exception as e:
-            self.logger.error(f"Error handling button callback: {e}")
-            await query.answer(text="An error occurred. Please try again.")
-
-    async def start_deposit_flow(self, user_id: int, context):
-        """Start deposit flow"""
-        try:
-            await context.bot.send_message(
-                chat_id=user_id,
-                text="Please enter your 1xBet ID:",
-                reply_markup=self.get_cancel_keyboard()
-            )
-            context.user_data['conversation_state'] = 'deposit_1xbet_id'
-        except Exception as e:
-            self.logger.error(f"Error starting deposit flow: {e}")
-
-    async def process_1xbet_id(self, update: Update, context):
-        """Process 1xBet ID input"""
-        user_id = update.effective_user.id
-        one_x_bet_id = update.message.text
-        
-        try:
-            # Validate 1xBet ID format (9-13 digits)
-            if not (one_x_bet_id.isdigit() and 9 <= len(one_x_bet_id) <= 13):
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text="Invalid 1xBet ID format. Please enter 9-13 digits.",
-                    reply_markup=self.get_cancel_keyboard()
-                )
-                return
-            
-            context.user_data['one_x_bet_id'] = one_x_bet_id
-            context.user_data['conversation_state'] = 'deposit_amount'
-            
-            await context.bot.send_message(
-                chat_id=user_id,
-                text="Enter deposit amount:",
-                reply_markup=self.get_cancel_keyboard()
-            )
-        except Exception as e:
-            self.logger.error(f"Error processing 1xBet ID: {e}")
-            await context.bot.send_message(
-                chat_id=user_id,
-                text="Error processing 1xBet ID. Please try again."
-            )
-
-    async def process_deposit_amount(self, update: Update, context):
-        """Process deposit amount"""
-        user_id = update.effective_user.id
-        try:
-            amount = float(update.message.text)
-            if amount <= 0:
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text="Amount must be positive.",
-                    reply_markup=self.get_cancel_keyboard()
-                )
-                return
-            
-            context.user_data['amount'] = amount
-            context.user_data['conversation_state'] = 'deposit_bank'
-            
-            await context.bot.send_message(
-                chat_id=user_id,
-                text="Select your bank:",
-                reply_markup=InlineKeyboardMarkup(self.get_bank_options_keyboard())
-            )
-        except ValueError:
-            await context.bot.send_message(
-                chat_id=user_id,
-                text="Invalid amount. Please enter a valid number.",
-                reply_markup=self.get_cancel_keyboard()
-            )
-
-    async def process_bank_selection(self, user_id: int, bank_data: str, context):
-        """Process bank selection"""
-        try:
-            bank = bank_data.replace("bank_", "")
-            
-            context.user_data['bank'] = bank
-            context.user_data['conversation_state'] = 'deposit_payslip'
-            
-            await context.bot.send_message(
-                chat_id=user_id,
-                text="Please upload your payment slip:",
-                reply_markup=self.get_cancel_keyboard()
-            )
-        except Exception as e:
-            self.logger.error(f"Error processing bank selection: {e}")
-            await context.bot.send_message(
-                chat_id=user_id,
-                text="Error processing bank selection. Please try again."
-            )
-
-    async def process_payslip(self, update: Update, context):
-        """Process payment slip"""
-        user_id = update.effective_user.id
-        file_id = update.message.photo[-1].file_id
-        
-        try:
-            # Download and validate payment slip
-            file_path = await context.bot.get_file(file_id).file_path
-            
-            # Store deposit information
-            deposit_data = {
-                'user_id': user_id,
-                'amount': context.user_data['amount'],
-                'bank': context.user_data['bank'],
-                'payslip_url': file_path,
-                'one_x_bet_id': context.user_data['one_x_bet_id']
-            }
-            
-            await self.store_deposit(deposit_data)
-            await self.notify_admin_group("New deposit request received")
-            
-            # Reset conversation state
-            context.user_data.clear()
-            
-            await context.bot.send_message(
-                chat_id=user_id,
-                text="Deposit request received successfully. Admin will review it shortly."
-            )
-        except Exception as e:
-            self.logger.error(f"Error processing payslip: {e}")
-            await context.bot.send_message(
-                chat_id=user_id,
-                text="Error processing payment slip. Please try again."
-            )
-
-    async def store_deposit(self, deposit_data: Dict):
-        """Store deposit information in database"""
-        try:
-            self.cursor.execute("""
-                INSERT INTO deposits (user_telegram_id, amount, payment_method, payment_slip_url, one_x_bet_id)
-                VALUES (?, ?, ?, ?, ?)
-            """, (
-                str(deposit_data['user_id']),
-                deposit_data['amount'],
-                deposit_data['bank'],
-                deposit_data['payslip_url'],
-                deposit_data['one_x_bet_id']
-            ))
-            self.conn.commit()
-        except sqlite3.Error as e:
-            self.logger.error(f"Error storing deposit: {e}")
-            raise
-
-    async def notify_admin_group(self, message: str):
-        """Notify admin group about new deposit"""
-        try:
-            keyboard = [
-                [InlineKeyboardButton("Approve", callback_data="approve"),
-                 InlineKeyboardButton("Reject", callback_data="reject")]
-            ]
-            
-            await self.application.bot.send_message(
-                chat_id=self.admin_group_id,
-                text=message,
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-        except Exception as e:
-            self.logger.error(f"Error notifying admin group: {e}")
-
-    def get_cancel_keyboard(self) -> List[List[InlineKeyboardButton]]:
-        """Return cancel keyboard"""
-        return [[InlineKeyboardButton("Cancel", callback_data="cancel")]]
+    async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # ... your callback handler logic ...
+        await update.callback_query.answer()
 
     async def main(self):
-        """Main entry point"""
-        self.application = (
-            Application.builder()
-            .token(self.token)
-            .read_timeout(7)
-            .get_updates_read_timeout(42)
-            .build()
-        )
+        application = Application.builder().token(self.token).build()
+        application.add_handler(CommandHandler("start", self.start))
+        application.add_handler(CallbackQueryHandler(self.button_callback))
+        # Add all other handlers...
 
-        # Register handlers
-        self.application.add_handler(CommandHandler("start", self.start))
-        self.application.add_handler(CallbackQueryHandler(self.button_callback))
-        self.application.add_handler(MessageHandler(~filters.COMMAND, self.process_1xbet_id))
-
-        # Start the bot
-        await self.application.initialize()
-        await self.application.start()
         self.logger.info("GG4NEXTWIN Bot started. Press Ctrl-C to exit.")
-        
-        # Run until Ctrl-C is pressed
-        await self.application.run_polling()
-        await self.application.shutdown()
+        await application.run_polling()
 
 if __name__ == '__main__':
-    # Load environment variables
     token = os.getenv('TELEGRAM_TOKEN')
     admin_group_id = os.getenv('ADMIN_GROUP_ID')
-    
     if not token or not admin_group_id:
         raise ValueError("TELEGRAM_TOKEN and ADMIN_GROUP_ID environment variables are required")
-    
-    # Create and run bot
     bot = GG4NEXTWINBot(token, admin_group_id)
+    import asyncio
     asyncio.run(bot.main())
